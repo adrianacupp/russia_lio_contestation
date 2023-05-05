@@ -1,0 +1,498 @@
+
+######################################## !!! PUTIN_SPEECHES !!! ########################################
+#### transform xml file into a df ####
+## 1st try on a single xml file
+#read the file
+a=[]
+with open('data/levshina-Putin_Corpus-e2dd797/Speeches_XML/2012/15224.xml', 'r') as f:
+    a = f.read()
+f.closed
+print(a)
+
+#with ElementTree: exploring the data
+import xml.etree.ElementTree as ET
+tree = ET.fromstring(a) #with parse, error:thefile is too big
+
+#tag, attrib, child
+tree.tag
+tree.attrib
+for child in tree:
+    print(child.tag, child.attrib)
+#there are 2 main "child" categories: meta(date, URL, description; introduction);
+#and the speech
+tree.findall(".//")
+tree.findall("./speech/p")
+for elm in tree.findall(".//"):
+    print(elm.attrib)
+for elm in tree.findall("./speech"):
+    print(elm.tag)
+for elm in tree.findall(".//speech/p"):
+    print(elm.attrib)
+for elm in tree.findall(".//speech/p"):
+    print(elm.text)
+for elm in tree.findall(".//meta/"):
+    print(elm.tag)
+
+# create the dataframe
+meta = pd.read_xml(a, xpath=".//meta")
+speech = pd.read_xml(a, xpath=".//speech/p")
+speech_15224 = pd.concat([meta, speech], axis=1)
+speech_15224.assign(
+    date = lambda x: x.date.fillna(method='ffill'),
+    URL = lambda x: x.URL.fillna(method='ffill'),
+    description = lambda x: x.description.fillna(method='ffill'),
+    introduction=lambda x: x.introduction.fillna(method='ffill')).head()
+
+### import/parse all xml files into df ###
+#all speeches have the same structure with two children tags: meta(date, Url, description, introduction)
+#open multiple files
+from os import listdir, path
+import os
+
+#define the function for year 2012
+mypath = 'data/levshina-Putin_Corpus-e2dd797/Speeches_XML/2012'
+def merge_append_xml_files():
+    data_frames = list[pd.DataFrame]()
+    for root, dirs, files in os.walk(mypath):
+        for file in files:
+            if file.endswith('.xml'):
+                df = pd.read_xml(os.path.join(root, file), xpath= ".//*")
+                data_frames.append(df)
+    return pd.concat(data_frames,axis = 0, ignore_index=True)
+
+speech_2012 = merge_append_xml_files()
+speech_2012.head(10)
+
+# define function for all years
+def read_speech_xml(path):
+    meta = pd.read_xml(path, xpath=".//meta")
+    speech = pd.read_xml(path, xpath=".//speech/p")
+    res = pd.concat([meta, speech], axis=1)
+    res = res.assign(
+        date = lambda x: x.date.fillna(method='ffill'),
+        URL = lambda x: x.URL.fillna(method='ffill'),
+        description = lambda x: x.description.fillna(method='ffill'),
+        introduction = lambda x: x.introduction.fillna(method='ffill'))
+    return res
+
+import glob
+
+# l = list(sorted(glob.glob('data/levshina-Putin_Corpus-e2dd797/Speeches_XML/**/*.xml')))
+l = list(sorted(glob.glob('data/levshina-Putin_Corpus-e2dd797/Speeches_XML/**/*.xml')))
+len(l)
+
+results = {}
+for file in l:
+    print(file)
+    results[file] = read_speech_xml(file)
+
+# result is a df and the path is the index
+results["data/levshina-Putin_Corpus-e2dd797/Speeches_XML/2012/15272.xml"]
+
+for key, df in results.items():
+    print(f"Filename: {key}")
+    print(df)
+
+# concat all the files 
+df = pd.concat(results)
+df.to_excel('data/putin_corpus.xlsx', index=False)
+putin = pd.read_excel('data/putin_corpus.xlsx')
+
+###################### EDA ###################### 
+putin[putin.isnull().any(axis=1)]
+#1687 rows where description is null and introduction has text
+putin[putin.description.isnull() & putin.introduction.notnull()]
+#fillna of col description with text of introduction
+putin['description'] = putin['description'].fillna(putin['introduction'])
+#8453 rows where description has text and introduction is null
+putin[putin.description.notnull() & putin.introduction.isnull()]
+#fill introduction na with description text
+putin['introduction'] = putin['introduction'].fillna(putin['description'])
+# 2873 rows missing both description and introduction
+putin[putin.description.isnull() & putin.introduction.isnull()]
+#OVERWRITE the putin file
+putin.to_excel('data/putin_corpus.xlsx', index=False)
+putin = pd.read_excel('data/putin_corpus.xlsx')
+putin.info()
+
+#### Remove Noise with Regex ######
+def clean(text):
+     # everything non-alpahnumeric with a space
+     text = re.sub(r'\W+',' ', text)
+     # Two or more dots with one
+     text = re.sub(r'\.{2,}', ' ', text)
+     # sequences of white spaces
+     text = re.sub(r'\s+', ' ', text)
+     return text.strip()
+
+kremlin['text'] = kremlin['text'].map(clean)
+
+
+
+####################### TEXT PREPROCESSING #####################
+############### STANZA #################
+#!!! if kernel crashes, then: 
+pip install torch torchvision
+
+import torch
+x = torch.rand(5, 3)
+print(x)
+
+
+pip install stanza
+import stanza
+stanza.download('ru')
+
+#test
+doc = nlp('Впервые издастся Собрание сочинений Зинаиды Николаевны Гиппиус, классика русского символизма, выдающегося поэта, прозаика, критика, публициста, драматурга Серебряного века и русского зарубежья.')
+print(*[f'word: {word.text+" "}\tlemma: {word.lemma}' for sent in doc.sentences for word in sent.words], sep='\n')
+#on column lemma
+nlp = stanza.Pipeline(lang='ru', processors='tokenize,pos,lemma', tokenize_no_ssplit=True,
+                        tokenize_batch_size=32, lemma_batch_size=50)
+
+#on lemma, toke, pos
+#pass the col as a list of docs
+list_of_docs = kremlin['text'].tolist()
+
+tokens = []
+lemma = []
+pos = []
+
+for doc in nlp(list_of_docs):
+    tokens.append([n.text.lower() for n in doc])
+    lemma.append([n.lemma_.lower() for n in doc])
+    pos.append([n.pos_ for n in doc])
+
+kremlin['tokens'] = tokens
+kremlin['lemma'] = lemma
+kremlin['pos'] = pos
+
+
+# you can decide which processors to import
+##Questions:
+#1) when passing the col text tolist(), is it necessary that 
+# all sentence are separated by \n\n?
+#2)is there a function for stopwords in stanza - russian language
+# if not you can passes stanza on preprocessed text: tokenize_pretokenized=True
+# ----> try preprocess with spacy
+
+############### SPACY #####################
+## save and read the dataset
+
+from ast import literal_eval
+import pandas as pd
+import numpy as np
+
+kremlin.to_excel('data/cleaned_putin_corpus.xlsx', index=False, engine='xlsxwriter')
+
+read_kremlin = pd.read_excel('data/cleaned_putin_corpus.xlsx')
+
+
+
+#Module 1: standard procedure
+import pandas as pd
+import numpy as np
+from pprint import pprint
+import gensim
+import gensim.corpora as corpora
+from gensim.utils import simple_preprocess
+from gensim.models import CoherenceModel
+import gensim.test.utils 
+import tqdm
+
+list_of_docs = read_kremlin['lemma'].tolist()
+
+#COMPUTE BIGRAMS
+from gensim.models import Phrases
+
+# Add bigrams and trigrams to docs (only ones that appear 10 times or more).
+bigram = Phrases(list_of_docs, min_count=10)
+for idx in range(len(list_of_docs)):
+    for token in bigram[list_of_docs[idx]]:
+        if '_' in token:
+            # Token is a bigram, add to document.
+            list_of_docs[idx].append(token)
+
+
+# tolerant_literal_eval in order to use dictionary on list_of_doc
+def tolerant_literal_eval(target):
+    try:
+        return literal_eval(target)
+    except:
+        return [""]
+
+list_of_docs2 = list(map(tolerant_literal_eval,list_of_docs))
+
+
+#CREATE A DICTIONARY
+from gensim.corpora import Dictionary
+#id2word
+dictionary = Dictionary(list_of_docs2)
+dictionary.num_docs
+
+# Filter out words that occur less than 10 documents, or more than 50% of the documents.
+dictionary.filter_extremes(no_below=10, no_above=0.5)
+#Get number of stored tokens
+print(len(dictionary))
+
+#CREATE A BOW CORPUS
+#compute the frequency of each word
+corpus = [dictionary.doc2bow(text) for text in list_of_docs]
+print('Number of unique tokens: %d' % len(dictionary))
+print('Number of documents: %d' % len(corpus))
+
+# TD-IDF TRANSFORMATION
+# multiplying a local component (term frequency) with a global component 
+# (inverse document frequency), and normalizing the resulting documents to unit length.
+
+from gensim.models import TfidfModel 
+tfidf = TfidfModel(corpus) 
+vectors = tfidf[corpus]
+
+# TRAINING THE MODEL
+from gensim.models import LdaModel 
+
+# Set training parameters.
+num_topics = 10
+chunksize = 100
+passes = 20 #controls how often we train the model on the entire corpus.
+iterations = 400
+eval_every = None  # Don't evaluate model perplexity, takes too much time.
+
+# Make an index to word dictionary.
+temp = dictionary[0]  # This is only to "load" the dictionary.
+id2word = dictionary.id2token
+
+lda = LdaModel(
+    corpus=corpus,
+    id2word=id2word,
+    chunksize=chunksize,
+    alpha='auto',
+    eta='auto',
+    iterations=iterations,
+    num_topics=num_topics,
+    passes=passes,
+    eval_every=eval_every,
+    per_word_topics=True, #calculates the topic weights for each word
+    random_state=42)
+
+lda.show_topics()
+
+# coherence level of the individual topic
+top_topics = lda.top_topics(corpus)
+
+# Average topic coherence is the sum of topic coherences of all topics, divided by the number of topics.
+avg_topic_coherence = sum([t[1] for t in top_topics]) / num_topics
+print('Average topic coherence: %.4f.' % avg_topic_coherence)
+
+from pprint import pprint
+pprint(top_topics)
+
+#save model in pickle format to working directory
+lda.save("models/lda_model_1.pkl")
+#load model back into your workspace from working directory
+lda_1 = gensim.models.LdaModel.load("models/lda_model_1.pkl")
+
+####################### tomotpy.CTM ####################
+kremlin = pd.read_excel('data/putin_corpus.xlsx')
+kremlin.info()
+#read and transform the preprocessed data in a list
+read_lemma = pd.read_pickle('data/lemma.pkl')
+data_lemma = read_lemma['lemma'].tolist()
+docs = data_lemma
+# Add bigrams
+from gensim.models.phrases import Phrases
+# Add bigrams to docs (only ones that appear several times or more).
+bigram = Phrases(docs, min_count=100)
+for idx in range(len(docs)):
+    for token in bigram[docs[idx]]:
+        if '_' in token:
+            # Token is a bigram, add to document.
+            docs[idx].append(token)
+# Remove rare and common tokens.
+# Filter out words that occur too frequently or too rarely.
+#Filter out words that occur less than in 10 documents, or more than 50% of the documents.
+max_freq = 0.5
+min_wordcount = 15
+# Create a dictionary representation of the documents, and filter out frequent and rare words.
+from gensim.corpora import Dictionary
+dictionary = Dictionary(docs)
+dictionary.filter_extremes(no_below=min_wordcount, no_above=max_freq)
+
+# Bag-of-words representation of the documents.
+corpus = [dictionary.doc2bow(doc) for doc in docs]
+#MmCorpus.serialize("models/corpus.mm", corpus)
+
+print('Number of unique tokens: %d' % len(dictionary))
+print('Number of docs: %d (%d)' % (len(corpus),len(docs)))
+from collections import Counter
+c = Counter()
+for d in docs:
+    c.update(d)
+
+# least common words in the corpus, by frequency
+c.most_common()[-15:]
+from collections import Counter
+c = Counter()
+for d in docs:
+    c.update(d)
+
+# most common words in the corpus, by frequency
+c.most_common(min_wordcount)
+## Correlated Topic Model 15 topics
+import tomotopy as tp
+
+# CTM model with 15 topics, removal of words appearing in fewer than 0.5% of the documents, 
+# minimum word count, remove the 15 most common words
+params = {'num_topics': 15, 'min_cf': 100, 'min_df': int(len(docs)*0.005), 'rm_top': 15, 'random_state': seed}
+mdl = tp.CTModel(k=params['num_topics'],min_cf=params['min_cf'],min_df=params['min_df'],seed=params['random_state'],rm_top=params['rm_top'])
+for doc in docs:
+    mdl.add_doc(doc)
+
+for i in range(0, 201, 10):
+    mdl.train(10)
+    print('Iteration: {}\tLog-likelihood: {}'.format(i, mdl.ll_per_word))
+for k in range(mdl.k):
+        print('Topic #{}'.format(k))
+        for word, prob in mdl.get_topic_words(k):
+            print('\t', word, prob, sep='\t')
+mdl.save('models/ctm_15_topics_min_wordcount_15.bin')
+mdl = tp.CTModel.load('models/ctm_15_topics_min_wordcount_15.bin')
+for k in range(mdl.k):
+    #if not mdl.is_live_topic(k): continue
+    print('Top 10 words of topic #{}'.format(k))
+    print(mdl.get_topic_words(k, top_n=10))
+
+mdl.load('models/ctm_15_topics_min_wordcount_15.bin')
+#theta(topics vs documents probability) matrices
+tmp.get_theta(mdl).head()
+#get documents with maximum probabilities for each topic
+tmp.get_top_docs(docs, model=mdl)
+#for k in range(mdl.k):
+    #print("\\item \\textbf{Topic \\#%d}"%k+": "+"``"+"'', ``".join([w[0] for w in mdl.get_topic_words(k, top_n=30) if len(w[0])>2])+"''.")
+# topic correlations
+
+topics_correlations = np.zeros((mdl.k,mdl.k))
+
+for k in range(mdl.k):
+    for m,c in enumerate(mdl.get_correlations(k)):
+        topics_correlations[k][m] = c
+fig = plt.figure(figsize=(8, 6))
+plt.pcolor(topics_correlations, norm=None, cmap='RdBu_r')
+plt.yticks(np.arange(mdl.k)+0.5, ["Topic #"+str(n) for n in range(mdl.k)])
+plt.xticks(np.arange(mdl.k)+0.5, ["Topic #"+str(n) for n in range(mdl.k)], rotation = 45)
+plt.colorbar(cmap='Blues')  # plot colorbar
+plt.tick_params(labelsize=13)
+plt.tight_layout()  # fixes margins
+plt.savefig("figures/corr_topic_model_correlations_15_ctm.pdf")
+
+#no significant correlation among topics
+
+############################# LDA with TOMOTOPY (15 topics, removal 30 most common words)
+import tomotopy as tp
+
+# LDA model with 15 topics, removal of words appearing in fewer than 0.5% of the documents, 
+# minimum word count, remove the 15 most common words
+params = {'num_topics': 15, 'min_cf': 100, 'min_df': int(len(docs)*0.005), 'rm_top': 30, 'random_state': seed}
+lda = tp.LDAModel(k=params['num_topics'],min_cf=params['min_cf'],min_df=params['min_df'],seed=params['random_state'],rm_top=params['rm_top'])
+for doc in docs:
+    lda.add_doc(doc)
+
+for i in range(0, 1000, 10):
+    lda.train(10)
+    print('Iteration: {}\tLog-likelihood: {}'.format(i, lda.ll_per_word))
+for k in range(lda.k):
+        print('Topic #{}'.format(k))
+        for word, prob in lda.get_topic_words(k):
+            print('\t', word, prob, sep='\t')
+lda.summary()
+lda.save('models/lda_tomotopy_15t.bin')
+lda = tp.LDAModel.load('models/lda_tomotopy_15t.bin')
+for k in range(lda.k):
+    #if not mdl.is_live_topic(k): continue
+    print('Top 10 words of topic #{}'.format(k))
+    print(lda.get_topic_words(k, top_n=10))
+
+lda.load('models/lda_tomotopy_15t.bin')
+
+topic_term_dists = np.stack([lda.get_topic_word_dist(k) for k in range(lda.k)])
+doc_topic_dists = np.stack([doc.get_topic_dist() for doc in lda.docs])
+doc_topic_dists /= doc_topic_dists.sum(axis=1, keepdims=True)
+doc_lengths = np.array([len(doc.words) for doc in lda.docs])
+counter = Counter(doc_lengths)
+counter
+vocab = list(lda.used_vocabs)
+term_frequency = lda.used_vocab_freq
+
+pyLDAvis.enable_notebook()
+prepared_data = pyLDAvis.prepare(
+    topic_term_dists, 
+    doc_topic_dists, 
+    doc_lengths, 
+    vocab, 
+    term_frequency,
+    start_index=0, # tomotopy starts topic ids with 0, pyLDAvis with 1
+    sort_topics=False # IMPORTANT: otherwise the topic_ids between pyLDAvis and tomotopy are not matching!
+)
+prepared_data
+
+# calculate coherence using preset
+for preset in ('u_mass', 'c_uci', 'c_npmi', 'c_v'):
+    coh = tp.coherence.Coherence(lda, coherence=preset)
+    average_coherence = coh.get_score()
+    coherence_per_topic = [coh.get_score(topic_id=k) for k in range(lda.k)]
+    print('==== Coherence : {} ===='.format(preset))
+    print('Average:', average_coherence, '\nPer Topic:', coherence_per_topic)
+    print()
+
+############ iterate over different number of topics to get the best coherence score
+# it takes long
+
+from tomotopy.utils import Corpus
+import numpy as np
+
+#create corpus
+#Corpus.load_from_list method expects a list of strings
+flat_list = [' '.join(sublist) for sublist in docs]
+corpus = Corpus()
+for doc in flat_list:
+    corpus.add_doc(doc)
+
+coherences = []
+for num_topics in range(15, 30):
+    lda = tp.LDAModel(k=num_topics, corpus=corpus)
+    lda.train(1000)
+    coh = tp.coherence.Coherence(lda, coherence= 'c_v')
+    c_v = coh.get_score()
+    coherences.append(c_v)
+
+optimal_num_topics = np.argmax(coherences) + 2
+print(f'Optimal number of topics: {optimal_num_topics}')
+
+# plot the coherence score vs number of topics
+plt.plot(range(start, end+1), coherences)
+plt.xlabel('Number of Topics')
+plt.ylabel('Coherence Score (c_v)')
+plt.show()
+
+####### several CTM models with rm_top values
+                c_v
+rm_top: 10      0.57
+        20        
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
