@@ -1,0 +1,374 @@
+################# messages to the federal assembly
+import requests
+from bs4 import BeautifulSoup
+import time
+import random
+import os
+import urllib
+from urllib.request import urlopen
+import pickle
+import sys
+import numpy as np
+import pandas as pd
+import elementpath
+import re
+
+# Define the user agents to rotate
+user_agents = [
+    'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/58.0.3029.110 Safari/537.36',
+    'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/60.0.3112.113 Safari/537.36',
+    'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/61.0.3163.79 Safari/537.36',
+    'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/63.0.3239.132 Safari/537.36'
+]
+
+# Define the base URL and path for the desired page
+# I can loop only until messages! 
+base_url = 'http://kremlin.ru'
+path = '/events/president/transcripts/messages/by-date/01.01.2009'
+
+# Make a GET request to the desired URL with rotating user agents and sleep time
+for i in range(len(user_agents)):
+    headers = {'User-Agent': user_agents[i]}
+    url = base_url + path
+    response = requests.get(url, headers=headers)
+    
+     # Check the status code
+    if response.status_code == 200:
+        # Parse the HTML content with BeautifulSoup
+        soup = BeautifulSoup(response.content, 'html.parser')
+                    
+# Sleep for a random time between 1 and 5 seconds before making the next request with a different user agent
+    time.sleep(1 + 4 * random.random())
+    i = (i + 1) % len(user_agents)
+    headers = {'User-Agent': user_agents[i]}
+response
+
+#increase the recursion limit
+sys.setrecursionlimit(10**6)
+
+# Save the soup object to a file using pickle
+with open("data/messages_soup.pickle", "wb") as file:
+    pickle.dump(soup, file)
+
+# Read the soup-file
+with open("data/messages_soup.pickle", "rb") as file:
+    soup = pickle.load(file)
+
+for link in soup.find_all('a'):
+    print(link.get('href'))
+
+soup.find_all('a')[28].get('href')
+
+# Find all links with an href attribute that starts with "/events/president/transcripts/messages"
+messages_links = soup.find_all("a", href=lambda href: href and href.startswith("/events/president/transcripts/messages"))
+for link in messages_links:
+    parts = link["href"].split("/")
+    last_part = parts[-1]
+    if last_part.isdigit() and len(last_part) == 5 or len(last_part) == 4:
+        print(link["href"])
+base_url = 'http://kremlin.ru'
+
+# Find all links with an href attribute that starts with "/events/president/transcripts/messages"
+messages_links = soup.find_all("a", href=lambda href: href and href.startswith("/events/president/transcripts/messages"))
+
+# convert the messages_links to a set to remove duplicates
+messages_links = set(messages_links)
+
+# create an empty list to store the urls
+urls = []
+
+# loop through the messages_links to create the urls
+for link in messages_links:
+    parts = link["href"].split("/")
+    last_part = parts[-1]
+    if last_part.isdigit() and len(last_part) == 5 or len(last_part) == 4:
+        url = base_url + link["href"]
+        urls.append(url)
+
+urls = set(urls)
+for url in urls:
+    print(url)
+messages = pd.DataFrame(urls, columns=['url'])
+messages['url']
+urls = list(urls)
+len(urls)
+soup_list = []
+
+for url in urls:
+    try:
+        # Make a GET request to the desired URL with rotating user agents and sleep time
+        i = 0
+        while True:
+            headers = {'User-Agent': user_agents[i]}
+            response = requests.get(url, headers=headers, timeout=10)
+
+            if response.status_code == 200:
+                # make a soup object from the response content
+                soup = BeautifulSoup(response.content, 'html.parser')
+                soup_list.append(soup)
+            
+            # Sleep for a random time between 1 and 5 seconds before making the next request with a different user agent
+                time.sleep(1 + 4 * random.random())
+                i = (i + 1) % len(user_agents)
+                break
+
+            else:
+                # If the response is not 200, sleep for a random time between 1 and 5 seconds and try again with a different user agent
+                time.sleep(1 + 4 * random.random())
+                i = (i + 1) % len(user_agents)
+
+    except Exception as e:
+        print(f"Error getting data from {url}: {e}")
+
+
+###### test ######
+
+for index, soup in enumerate(soup_list):
+    if index == 11:
+        print(soup.prettify())
+
+len(soup_list)
+
+for soup in soup_list:
+    print(soup.find('time', {'itemprop': 'datePublished'})['datetime'])
+
+sorted_soup_list = sorted(soup_list, key=lambda soup: soup.find('time', {'itemprop': 'datePublished'})['datetime'])
+for soup in sorted_soup_list:
+    print(soup.find('time', {'itemprop': 'datePublished'})['datetime'])
+
+for soup in soup_list:
+    print(soup.find('h1', class_='entry-title').text.strip())
+
+for soup in soup_list:
+    b_tag = soup.find_all('b')
+    if b_tag is not None:
+        for b in b_tag:
+            print(b.text.strip())
+
+for soup in soup_list:
+    matching_paragraphs = soup.find_all('p' ,class_=re.compile("theme_1"))
+    for p in matching_paragraphs:
+        print(p.text)
+
+for soup in soup_list:
+    matching_paragraphs = soup.find_all('p' ,class_=re.compile("person_0"))
+    for p in matching_paragraphs:
+        print(len(p.text))
+
+for soup in soup_list:
+    print(soup.prettify())
+
+for soup in soup_list:
+    for item in soup.find_all('p'):
+        for i in item.find_all("span", {"class": "masha_index"}):
+            print(i.text)
+
+############################ final code on messages ####################
+
+soup_list = []
+
+# create a list to store the col values
+datetime_list = []
+title_list = []
+text_list = []
+speaker_list = []
+
+
+for url in urls:
+    try:
+        # Make a GET request to the desired URL with rotating user agents and sleep time
+        i = 0
+        while True:
+            headers = {'User-Agent': user_agents[i]}
+            response = requests.get(url, headers=headers, timeout=10)
+
+            if response.status_code == 200:
+                # make a soup object from the response content
+                soup = BeautifulSoup(response.content, 'html.parser')
+                soup_list.append(soup)
+
+                # find the datetime value and append it to the datetime_list
+                datetime_value = soup.find('time', {'itemprop': 'datePublished'})['datetime']
+                datetime_list.append(datetime_value)
+
+                # find the title tag and append to title_list
+                title_value = soup.find('h1', class_='entry-title').text.strip()
+                title_list.append(title_value)
+
+                # find matching paragraphs
+                matching_paragraphs = soup.find_all('p')
+
+                # find the text and append to text_list
+                text_value = ''
+                for p in matching_paragraphs:
+                    text_value += p.text.strip() + ' '
+
+                text_list.append(text_value)
+
+
+                # find the speaker value for each paragraph
+                speaker_value = ''
+                for p in matching_paragraphs:
+                    b_tag = p.find_previous('b')
+                    if b_tag is not None and speaker_value == '':
+                        speaker_value = b_tag.text.strip()
+                speaker_list.append(speaker_value)
+            
+
+                # Sleep for a random time between 1 and 5 seconds before making the next request with a different user agent
+                time.sleep(1 + 4 * random.random())
+                i = (i + 1) % len(user_agents)
+                break
+
+            else:
+                # If the response is not 200, sleep for a random time between 1 and 5 seconds and try again with a different user agent
+                time.sleep(1 + 4 * random.random())
+                i = (i + 1) % len(user_agents)
+
+    except Exception as e:
+        print(f"Error getting data from {url}: {e}")
+
+
+# create a DataFrame from the lists of column values
+messages_2 = pd.DataFrame({'datetime': datetime_list, 'speaker': speaker_list, 'title': title_list, 'text': text_list})
+
+
+# display the updated DataFrame
+messages_2
+
+#create a df: messages to federal assembly
+mtfa = pd.concat([messages, messages_2], axis = 1)
+mtfa
+# convert the datetime column to datetime type
+mtfa['datetime'] = pd.to_datetime(mtfa['datetime'])
+
+# define a function to map names based on datetime
+def map_names(row):
+    if row['datetime'].year >= 2008 and row['datetime'].year <= 2011:
+        return 'Д.Медведев'
+    else:
+        return 'В.Путин'
+
+mtfa['speaker'] = mtfa.apply(map_names, axis=1)
+mtfa
+#save the df as pickle
+mtfa.to_pickle('data/corpus_adriana/corpus_president_of_russia/messages.pkl')
+
+######################################## statements on major issues 2004-2023 ###########
+#540 soups
+# assign a speaker <b> tag to each paragraph. if <p> has no speaker, assign the last found.
+# create a df with date, url, title, speaker, text
+
+# Load the soup_list from the pickle file
+with open('data/corpus_adriana/corpus_president_of_russia/filtered_soup_list.pkl', 'rb') as f:
+    filtered_soup_list = pickle.load(f)
+
+
+##### text on one soup ####
+# Find the soup
+soup = filtered_soup_list[20]
+
+# Extract the date and URL
+datetime = soup.find('time', {'itemprop': 'datePublished'})['datetime']
+link_tag = soup.find('link', rel='alternate',
+                         type='text/html', hreflang='en')
+if link_tag:
+    url = link_tag.get('href')
+    
+# Extract the title
+title = soup.find('h1', class_='entry-title').text.strip()
+
+# Find all <p> tags in the soup
+p_tags = soup.find_all('p')
+
+# Initialize the speaker variable to None
+speaker = None
+assign_speaker = False
+
+# Initialize a list to store the data
+data = []
+
+# Loop through all <p> tags and assign a speaker if needed
+for p_tag in p_tags:
+    # Check if the <p> tag has a <b> tag inside it
+    if p_tag.find('b'):
+        # If it does, save the <b> tag as the current speaker
+        speaker = p_tag.find('b').text.strip()
+        assign_speaker = True
+    else:
+        # If it doesn't and a <b> tag has been detected, assign the last speaker to this <p> tag
+        if assign_speaker and speaker is not None:
+            # Create a new <b> tag with the speaker's name and insert it before the <p> tag
+            new_tag = soup.new_tag('b')
+            new_tag.string = speaker
+            p_tag.insert(0, new_tag)
+
+# Find all <p> tags
+p_tags = soup.find_all('p')
+
+# Extract the speaker's name and the corresponding text from each <p> tag
+for p_tag in p_tags:
+    # Check if the <p> tag has a <b> tag inside it
+    if p_tag.find('b'):
+        # Extract the speaker's name from the <b> tag
+        speaker_name = p_tag.b.text.strip()
+
+        # Extract the text from the <p> tag (excluding the <b> tag)
+        text = ' '.join(p_tag.find_all(text=True, recursive=False)).replace(speaker_name, '', 1).strip()
+
+        # Add the data to the list
+        data.append({'Date': datetime, 'URL': url, 'Title': title, 'Speaker': speaker_name, 'Text': text})
+
+# Create a pandas DataFrame from the data
+df = pd.DataFrame(data)
+
+# Print the DataFrame
+df
+
+############################ final code statements on major issues ############################
+
+# Initialize a list to store the data
+data = []
+
+# Loop through all filtered soups
+for soup in filtered_soup_list:
+    # Extract the date and URL
+    datetime = soup.find('time', {'itemprop': 'datePublished'})['datetime']
+    url = soup.find('div', {'class': 'share_link share_link_p'}).span.text.strip()
+    
+
+    # Extract the title
+    title = soup.find('h1', class_='entry-title').text.strip()
+
+    # Find all <p> tags in the soup
+    p_tags = soup.find_all('p')
+
+    # Initialize the speaker variable to None
+    speaker = None
+
+    # Initialize a list to store the data for this document
+    doc_data = []
+
+    # Loop through all <p> tags and assign a speaker if needed
+    for p_tag in p_tags:
+        # Reset the speaker variable to None at the beginning of each <p> tag loop
+        speaker = None
+
+        # Check if the <p> tag has a <b> tag inside it
+        if p_tag.find('b'):
+            # If it does, save the <b> tag as the current speaker
+            speaker = p_tag.find('b').text.strip()
+
+        # Extract the text from the <p> tag (excluding the <b> tag if present)
+        text = ' '.join(p_tag.find_all(string=True, recursive=False)).strip()
+        if speaker:
+            text = text.replace(speaker, '', 1).strip()
+
+        # Add the data for this <p> tag to the list for this document
+        doc_data.append({'date': datetime, 'url': url, 'title': title, 'speaker': speaker, 'text': text})
+
+    # Add the data for this document to the overall list of data
+    data.extend(doc_data)
+
+# Create a pandas DataFrame from the data
+df = pd.DataFrame(data)

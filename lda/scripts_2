@@ -1,0 +1,293 @@
+######################## !!! RU_MOFA !!! ########################
+# cut rows of articles before 2012
+import time
+twotousandtwelve = time.strptime('2012-01-01', '%y-%m-%d')
+ru_mofa[(ru_mofa['publication_date'].dt.year == twotousandtwelve.tm_year)]
+
+ru_mofa.drop( ru_mofa[ ru_mofa['publication_date'] < pd.Timestamp(2012,1,1) ].index, inplace=True)
+
+
+# extract proper name from col Headline
+import nltk
+from nameparser.parser import HumanName
+nltk.download('maxent_ne_chunker')
+nltk.download('words')
+
+def get_human_names(text):
+    tokens = nltk.tokenize.word_tokenize(text)
+    pos = nltk.pos_tag(tokens)
+    sentt = nltk.ne_chunk(pos, binary = False)
+    person_list = []
+    person = []
+    name = ""
+    for subtree in sentt.subtrees(filter=lambda t: t.label() == 'PERSON'):
+        for leaf in subtree.leaves():
+            person.append(leaf[0])
+        if len(person) > 1: #avoid grabbing lone surnames
+            for part in person:
+                name += part + ' '
+            if name[:-1] not in person_list:
+                person_list.append(name[:-1])
+            name = ''
+        person = []
+    return (person_list)
+
+ru_mofa["speaker"] = ru_mofa["headline"].apply(get_human_names)
+
+#print headline and speaker with following condition:
+for index, row in ru_mofa[(ru_mofa['speaker'].str.len() == 0) & (ru_mofa["headline"])].iterrows():
+    print(row['headline'], row['speaker'])
+
+# replace [] with speakers name if condition is met:
+for index, row in ru_mofa[(ru_mofa['speaker'].str.len() == 0) & \
+    (ru_mofa["headline"].str.contains('LAVROV|Lavrov|RUSSIAN MINISTER OF FOREIGN AFFAIRS|Russian Minister of Foreign Affairs|FOREIGN MINISTRY|Foreign Ministry|FOREIGN MINISTER SERGEY LAVROV|Foreign Minister Sergey Lavrov|SERGEY LAVROV|Sergey Lavrov|SERGEY LAVROV MEETS|Sergey Lavrov Meets|RUSSIAN MFA|Russian MFA|S. LAVROV|S. Lavrov|MINISTRY|Ministry'))].iterrows():
+    ru_mofa.loc[index, 'speaker'] = "[Sergey Lavrov]"
+
+for index, row in ru_mofa[(ru_mofa['speaker'].str.len() == 0) & (ru_mofa["headline"].str.contains('Alexander Yakovenko|Spokesman|SPOKESMAN|ALEXANDER YAKOVENKO'))].iterrows():
+    ru_mofa.loc[index, 'speaker'] = "[Alexander Yakovenko]"
+
+for index, row in ru_mofa[(ru_mofa['speaker'].str.len() == 0) & (ru_mofa["headline"].str.contains('Alexander Lukashevich|ALEXANDER LUKASHEVICH|OSCE|osce'))].iterrows():
+    ru_mofa.loc[index, 'speaker'] = "[Alexander Lukashevich]"
+
+for index, row in ru_mofa[(ru_mofa['speaker'].str.len() == 0) & (ru_mofa["headline"].str.contains("DEPUTY MINISTER OF FOREIGN AFFAIRS|Deputy Minister of Foreign Affairs|DEPUTY FOREIGN AFFAIRS|Deputy Foreign Affairs|RUSSIAN DEPUTY MINISTER|Russian Deputy Minister|DEPUTY FOREIGN MINISTER|Deputy Foreign Minister"))].iterrows():
+    ru_mofa.loc[index, 'speaker'] = "[Deputy Minister of Foreign Affairs]"
+
+
+# replace the remaining [] where there is no defined speaker as Russia MFA
+for index, row in ru_mofa[(ru_mofa['speaker'].str.len() == 0)].iterrows():
+    ru_mofa.loc[index, 'speaker'] = "[Russia MFA]"
+
+for index, row in ru_mofa[(ru_mofa['speaker'].str.len() == 0) & (ru_mofa['speaker'].str.contains('Nuclear Weapons|Joint Statement|Human Rights|Arab Republic|Rossiya Segodnya|Arms Control|Paul Whelan|Augusto Santos|John Kerry|Alexey Navalny|Threats Ilya|Climate Change|Border Commission|Hugo Martinez|Rossiya Segodnya International|Edi Rama|Human Rights Nils|Kofi Annan|States Parties'))].iterrows():
+    ru_mofa.loc[index, 'speaker'] = "[MFA]"
+
+#clean the wrongly assigned col
+for index, row in ru_mofa[ru_mofa["headline"].str.contains('RUSSIAN MINISTER OF FOREIGN AFFAIRS|Foreign Ministry|Foreign Minister Sergey Lavrov|Sergey Lavrov|MINISTER OF FOREIGN AFFAIRS|Minister of Foreign Affairs')].iterrows():
+    ru_mofa.loc[index, 'speaker'] = "[Sergey Lavrov]"
+
+
+def clean_speaker():
+    for index, row in ru_mofa[ru_mofa["headline"].str.contains('LAVROV|Lavrov|RUSSIAN MINISTER OF FOREIGN AFFAIRS|Russian Minister of Foreign Affairs|FOREIGN MINISTRY|Foreign Ministry|FOREIGN MINISTER SERGEY LAVROV|Foreign Minister Sergey Lavrov|SERGEY LAVROV|Sergey Lavrov|SERGEY LAVROV MEETS|Sergey Lavrov Meets|RUSSIAN MFA|Russian MFA|S. LAVROV|S. Lavrov|MINISTRY|Ministry')].iterrows():
+        ru_mofa.loc[index, 'speaker'] = "[Sergey Lavrov]"
+    for index, row in ru_mofa[ru_mofa["headline"].str.contains('Alexander Yakovenko|Spokesman|SPOKESMAN|ALEXANDER YAKOVENKO')].iterrows():
+        ru_mofa.loc[index, 'speaker'] = "[Alexander Yakovenko]"
+    for index, row in ru_mofa[ru_mofa["headline"].str.contains('Alexander Lukashevich|ALEXANDER LUKASHEVICH|OSCE|osce')].iterrows():
+        ru_mofa.loc[index, 'speaker'] = "[Alexander Lukashevich]"
+    for index, row in ru_mofa[ru_mofa["headline"].str.contains("DEPUTY MINISTER OF FOREIGN AFFAIRS|Deputy Minister of Foreign Affairs|DEPUTY FOREIGN AFFAIRS|Deputy Foreign Affairs|RUSSIAN DEPUTY MINISTER|Russian Deputy Minister|DEPUTY FOREIGN MINISTER|Deputy Foreign Minister")].iterrows():
+        ru_mofa.loc[index, 'speaker'] = "[Deputy Minister of Foreign Affairs]"
+
+
+# replace wrongly assigned speaker with Russia MFA
+for index, row in ru_mofa[ru_mofa['speaker'].str.contains('Nuclear Weapons|Joint Statement|Human Rights|Arab Republic|Rossiya Segodnya|Arms Control|Paul Whelan|Augusto Santos|John Kerry|Alexey Navalny|Threats Ilya|Climate Change|Border Commission|Hugo Martinez|Rossiya Segodnya International|Edi Rama|Human Rights Nils|Kofi Annan|States Parties|Saman Weerasinghe|Lundeg Purevsuren|Sudan Barnaba Marial Benjamin|Thoonglun Sisulit|Bert Koenders|Outer Space Objects|Gush Etzion|Polish Ambassador|Khalid Bin Mohammed|Red Army|Strategic Arms|Mohammad Javad|Holy See|Svalbard Archipelago|Davit Dondua|St Petersburg International Economic Forum|East Jerusalem|Radovan Karadzic|Moldova Andrei|Border Crossing|Worship Susana|Daily Telegraphâ€œ|Luxembourg Minister|Global Trends|Nuclear Safety|Draft Resolution|Hor Namhong|Gabonese Minister|Aliaskhab Kebekov|Wang Yi|Normandy Meeting|Zambian Foreign|Fumio Kishida|Sheikh Abdullah|Zayed Al|Jens Stoltenberg|Nuclear Material|David Choquehuanca|Tedros Adhanom|Nova Makedonija|Rossiyskaya Gazeta|Global Initiative|Arbitrary Deprivation|Culture Centre|Jeff Shell|German Foreign|Syrian Ambassador|Burundi External Relations|Sir Simon Lawrance Gass|Political Director|Avigdor Liberman|Iyad Ameen Madani|Julie Bishop|St Petersburg|Political Dialogue|Nils MuiÅ¾nieks|Expatriates Walid Muallem|Joint Press Statement|Carlos Raul|Civil Societies|Atomic Energy|Munich Betrayal|Terrorism Act|Assembly Summit|Volgograd Region|Dilma Rousseff|Sergey Sevastyanov|James Monastery Mother Agnes Mariam|Akhlas Akhlaq|Defence Ministers Council|Crime Alexander Zmeyevsky|Dmitry Safonov|Other International Organisations|Old Jerusalem|Benin Aurelien|Pham Binh|Niger Ibrahim Yacoubou|Elmar Mammadyarov|Sigmar Gabriel|Radio Vesti|Ratko Mladic|Armenian Foreig|Erlan Abdyldaev|Lebanese Tourism|Idriss Jazairy|Dilgam Askerov|Ethnic Affairs Igor|Davor Ivo Stier|Geoffrey Onyeama|Alex Younger|Estonian Foreign|Toxin Weapons|Visa Formalities|Ertharin Cousin|Biometric Personal Data|Peter Szijjarto|Zambian Minister|Expert Council|Joint Russian|Main Human Freedoms|Mutual Cancelation|Elections Held|Three Pussy Riot|Vatican City|Eesti Ekspress|Mutual Travel|Denis Ronaldo Moncada|Marshal Ivan Konev|Road Initiative|Vladimir Makei|Joint Working Group|Light Weapons|Wind Jet|Saad Haririâ€™s|Strategic Partnership Agreement|Andreas Fryganas|Costa Rica|Anton Mazur|Honorary Archbishop|Isselkou|Astana Process|Craig Reedie|Mutual Reductions|Gas Exporting|Worship Jorge|Mount Agung|Mohamed Siala|Joint Centre|Milorad Dodik|Osman Saleh|Vologda Region|Arab League|Laotian Foreign|Kabul Process|Normandy Four|Donald Trump|Ukraine Gerardo|Vehicle Registration|Mongolian Minister|John Nicholson|Venezuela Delcy|Salahuddin Rabbani|Works Agency|Aslan Abashidze|Humanitarian|Caesar|Trade|Ri Su Yong|Burundi|Nicole Roussell|Karin Kneissl|Bolshoi Theatre|Magnitsky List|Anna News|Georgia|Nikkei|Thorbjorn|Young Diplomats|Saint Kitts|Edmond Mulet|auritius|Lithuanian Foreign|Sebastian Kurz|Alexander Pushkin|Arab Emirates|Your Memory|Shanghai Cooperation Organisation|John Tefft|Vygaudas Usackas|Her Son|Mutual Abolition|Peru R. Roncayolo|Ossetia D.|Antonio Guterres|Kirghizia E.|Luiz Alberto|Honduras Mireya AgÃ¼ero|Ban Ki-moon|Dmytro Yarosh|Law K.|Abu Dhabi|Charap|Sudan|Ambassador Extraordinary|Assembly Â|Lebanon T.|Caucasus F. Lefor|Strategic Confidence|Military Security|Air Berlin|Great Britain|Mr. Alexey Yu|Sri Lanka|Law K.|Ukraine Azamat|Euratom Ambassador Vladimir|Ahmed Al|Masis Mailyan|Burkina Faso|Black Sea Economic|Assembly Third Committee|Mutual Exchanges|Young Guard|Political Questions|Edith Bouvier|African|Illicit Arms|Nepali Minister|Human Development|Dialogue Forum|Permanent Representative|Andrei Kelin|Äôs|Richard Lugar Centre|David Hale|John Bolton|Da Nang|Special Presidential|Brunei Darussalam|Election Results|Regular Migration|Extremist Organisations|Simon Coveney|Nuclear|Arab|Liberator|Ambassador Cheng Jingye|Work Visit|Kirghiz|Deputy Chairman|Michel Kilo|Lantos Swett|Panama City|Sexual|Joint|Treaty|Jeremy Hunt|Qasem|Qatari|Mutual|Syrian|Venezuelan|Afghan|Great|Defence|Title|Public|Nikolai Bayev|Alexander Kuranov|Mohsen Fakhrizadeh')].iterrows():
+    ru_mofa.loc[index, 'speaker'] = "[Russia MFA]"
+
+#clean col speaker (only 2 elements)
+ru_mofa["speaker"] = ru_mofa["speaker"].str.replace('Global Times|Ian Hill|Chemical Weapons|Ambassador|Spokeperson|Mr.|mr.|Deputy Head|Permanent Delagate|Special Representative|Chemical Weapons Convention|Rashid Alimov|Chikahito Harada', ' ')
+ru_mofa["speaker"] = ru_mofa["speaker"].str.replace(", ","" )
+
+
+# Clean article_content column
+def clean_article_content():
+    ru_mofa["article_content"] = ru_mofa["article_content"].str.replace('Unofficial translation from Russian', " ")
+    ru_mofa["article_content"] = ru_mofa["article_content"].str.replace("_x000D_\n\t|¬†|¬†¬†_x000D_\n_x000D_\n|_x000D_\n_x000D_\n| ¬† ¬† ", " ")
+    ru_mofa["article_content"] = ru_mofa["article_content"].str.replace('PRESS-RELEASE', " ")
+
+ru_mofa.reset_index(drop=True)
+
+
+
+#PREPROCESSING PIPELINE
+# Data Cleaning
+
+#Identify Noise with Regular Expression
+import re 
+RE_SUSPICIOUS = re.compile(r'[Äô&#<>{}\[\]\\]')
+
+def impurity(text, min_len=10): 
+    """returns the share of suspicious characters in a text""" 
+    if text == None or len(text) < min_len: 
+        return 0 
+    else: 
+        return len(RE_SUSPICIOUS.findall(text))/len(text)
+
+print(impurity(text))
+
+#Remove Noisy
+import html 
+def clean(text):
+     # convert html escapes like &amp; to characters. 
+     text = html.unescape(text) 
+     # tags like <tab> 
+     text = re.sub(r'<[^<>]*>', ' ', text) 
+     # markdown URLs like [Some text](https://....) 
+     text = re.sub(r'\[([^\[\]]*)\]\([^\(\)]*\)', r'\1', text) 
+     # text or code in brackets like [0] 
+     text = re.sub(r'\[[^\[\]]*\]', ' ', text) 
+     # standalone sequences of specials, matches ¬† but not #cool 
+     text = re.sub(r'(?:^|\s)[¬†<>{}\[\]+|\\:-]{1,}(?:\s|$)', ' ', text) 
+     # standalone sequences of hyphens like --- or == 
+     text = re.sub(r'(?:^|\s)[\-=\+]{2,}(?:\s|$)', ' ', text) 
+     # everything non-alpahnumeric with a space
+     text = re.sub(r'\W+',' ', text)
+     # Two or more dots with one
+     text = re.sub(r'\.{2,}', ' ', text)
+     # all the non ASCII characters      
+     text = re.sub(r'[^\x00-\x7F]+',' ', text)
+     # PRESS RELEASE
+     text = re.sub('PRESS RELEASE', ' ', text)    
+     # _x000D_
+     text = re.sub('_x000D_', ' ', text)
+     # Unofficial translation from Russian
+     text = re.sub('Unofficial translation from Russian', ' ', text)
+     # on Month, Day
+     text = re.sub(r"[a-zA-Z]+ [a-zA-Z]+ \d+", ' ', text)
+     # sequences of white spaces
+     text = re.sub(r'\s+', ' ', text)
+     # good morning, etc
+     #text = re.sub('Good morning|Good afternoon|Good evening|ladies and gentlemen|thank you', ' ', text)
+     # Vladimir Putin
+     #text = re.sub('Vladimir Putin', 'Vladimir-Putin', text)
+     # Sergey Lavrov
+     text = re.sub('Sergey Lavrov|S. Lavrov|S Lavrov', ' Sergey Lavrov', text)
+     return text.strip()
+
+ru_mofa['text_clean'] = ru_mofa['article_content'].map(clean)
+
+#check the text_clean impurity
+ru_mofa['impurity'] = ru_mofa['text_clean'].apply(impurity, min_len=20)
+ru_mofa[['text_clean', 'impurity']].sort_values(by='impurity', ascending=False).head(3)
+
+
+#Tokenize (customized)
+def custom_tokenizer(nlp): # use default patterns except the ones matched by re.search 
+    prefixes = [pattern for pattern in nlp.Defaults.prefixes 
+                if pattern not in ['-', '_', '#']] 
+    suffixes = [pattern for pattern in nlp.Defaults.suffixes 
+                if pattern not in ['_']] 
+    infixes = [pattern for pattern in nlp.Defaults.infixes 
+                if not re.search(pattern, 'xx-xx')]
+
+return Tokenizer(vocab = nlp.vocab,
+                rules = nlp.Defaults.tokenizer_exceptions, 
+                prefix_search = compile_prefix_regex(prefixes).search, 
+                suffix_search = compile_suffix_regex(suffixes).search, 
+                infix_finditer = compile_infix_regex(infixes).finditer, 
+                token_match = nlp.Defaults.token_match)
+
+
+#Add customized stopwords
+cfrom spacy.lang.en import stop_words
+nlp.Defaults.stop_words |= { 'ambassador', 'colleague', 'dear', 'deputy', 'minister', 'mr', 'mrs', 'miss', 'president', 'question', 'today'}
+stop_words = stop_words.STOP_WORDS
+stop_words
+
+#tokenize, POS and lemmatize without stopwords(be sure you pass the custom stopword list!) on text.lower()
+
+tokens = []
+lemma = []
+pos = []
+
+for doc in nlp.pipe(ru_mofa['text'].astype('unicode').values, batch_size=50):
+    tokens.append([n.text.lower() for n in doc])
+    lemma.append([n.lemma_.lower() for n in doc
+                if n.lemma_.lower() not in stop_words])
+    pos.append([n.pos_ for n in doc])
+
+ru_mofa['tokens'] = tokens
+ru_mofa['lemma'] = lemma
+ru_mofa['pos'] = pos
+
+
+#### GENSIM ####
+list_of_docs = ru_mofa['lemma'].tolist()
+
+### Compute bigrams and trigrams to text ### (as MODEL 2)
+from gensim.models import Phrases
+
+# Add bigrams and trigrams to docs (only ones that appear 20 times or more).
+bigram = Phrases(list_of_docs, min_count=20)
+for idx in range(len(list_of_docs)):
+    for token in bigram[list_of_docs[idx]]:
+        if '_' in token:
+            # Token is a bigram, add to document.
+            list_of_docs[idx].append(token)
+
+
+########### WARNING! check lemma and other col are not "stringed". is it linked with ru_mofa = pd.read_excel('data/ru_mofa.xlsx')?
+
+
+### MODEL 1 ###
+## no of Topics= 10
+
+#create a dictionary from ru_mofa['lemma'] representation of the documents
+
+
+from gensim.corpora import Dictionary
+dictionary = Dictionary(list_of_docs)
+dictionary.num_docs
+
+# Filter out words that occur less than 20 documents, or more than 50% of the documents.
+dictionary.filter_extremes(no_below=20, no_above=0.5)
+
+# BOW
+ #compute the frequency of each word
+corpus = [dictionary.doc2bow([text]) for text in list_of_docs]
+print('Number of unique tokens: %d' % len(dictionary))
+print('Number of documents: %d' % len(corpus))
+
+#TD-IDF
+from gensim.models import TfidfModel 
+tfidf = TfidfModel(corpus) 
+vectors = tfidf[corpus]
+
+## performing LDA
+from gensim.models import LdaModel 
+
+# Set training parameters.
+num_topics = 10
+chunksize = 2000
+passes = 20 #controls how often we train the model on the entire corpus.
+iterations = 400
+eval_every = None  # Don't evaluate model perplexity, takes too much time.
+
+# Make an index to word dictionary.
+temp = dictionary[0]  # This is only to "load" the dictionary.
+id2word = dictionary.id2token
+
+lda = LdaModel(
+    corpus=corpus,
+    id2word=id2word,
+    chunksize=chunksize,
+    alpha='auto',
+    eta='auto',
+    iterations=iterations,
+    num_topics=num_topics,
+    passes=passes,
+    eval_every=eval_every, 
+    random_state=42)
+
+### coherence level
+top_topics = lda.top_topics(corpus)
+
+# Average topic coherence is the sum of topic coherences of all topics, divided by the number of topics.
+avg_topic_coherence = sum([t[1] for t in top_topics]) / num_topics
+print('Average topic coherence: %.4f.' % avg_topic_coherence)
+
+from pprint import pprint
+pprint(top_topics)
+# OUTPUT: Average topic coherence: -0.9719.
+
+## model with 
+# regex: sergey, lavrov --> sergey_lavrov
+# stopwords: ministry, foreign, affairs, like, sergey_lavrov
+# Output: Average topic coherence: -0.9000
+#worse? maybe not pass sergey_lavrov as stopword
+
+#for next time:
+# how to save df without getting all mini string
+# how to store and load lda model
+# check coherence level (in topic coherence)
+# check again what to clean in the text:
+# (-, __, v, s, ...)
+# regex: sergey, lavrov --> sergey_lavrov
+# stopwords: ministry, foreign, affairs, like, sergey_lavrov
+# how to decide for the best number of topics: check coherence level for each
