@@ -1,4 +1,6 @@
 # russia_lio_contestation
+Freie Universität - SCTIPTS cluster of Excellence 2022-2023
+
 how has the concept of world-order changed to Russia policy makers in 20 years?
 
 To further explore the changing semantic relationships between LIO contestation typologies and “world order” over time, I employ computational text-as-data methods in an original corpus (6649 documents including speeches, addresses, interviews and statements) from the President of Russia (2003-2023) and the Russian Minister of Foreign Affairs (2004-2023). 
